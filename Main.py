@@ -74,7 +74,6 @@ def aquaClicker(res):
     click_sound = pygame.mixer.Sound(os.path.join(ASSETS_DIR, "dahellBoom.mp3"))
 
     root2 = tk.Tk()
-    root2.geometry(f"{res}")
     root2.title("Aqua Clicker")
 
     try:
@@ -82,58 +81,77 @@ def aquaClicker(res):
     except ValueError:
         bg_width, bg_height = 800, 600
 
+    # Clamp to the actual screen so a resolution bigger than the monitor
+    # doesn't open partially off-screen.
+    screen_w, screen_h = root2.winfo_screenwidth(), root2.winfo_screenheight()
+    bg_width = min(bg_width, screen_w)
+    bg_height = min(bg_height, screen_h - 80)
+    root2.geometry(f"{bg_width}x{bg_height}")
+    root2.minsize(500, 400)
+
     bg_source = Image.open(os.path.join(ASSETS_DIR, "Cliffs_location.png"))
     bg_label = tk.Label(root2, borderwidth=0)
     bg_label.place(x=0, y=0, relwidth=1, relheight=1)
 
-    def update_bg(event=None):
+    aquaAmounttext = tk.Label(root2, text="Aqua Clicker")
+    aquaAmountinteger = tk.Label(root2, text=f"{aquas}")
+    aquaAmounttext.place(relx=0.5, rely=0.03, anchor="n")
+    aquaAmountinteger.place(relx=0.5, rely=0.10, anchor="n")
+
+
+    aqua_1 = tk.Canvas(root2, highlightthickness=0)
+    aqua_1.place(relx=0.5, rely=0.18, anchor="n", relwidth=0.4, relheight=0.75)
+
+    aqua_gif = Image.open(os.path.join(ASSETS_DIR, "aqua-deltarune.gif"))
+    frame_w, frame_h = aqua_gif.size
+    aqua_raw_frames = []
+    aqua_frame_delays = []
+    for frame in ImageSequence.Iterator(aqua_gif):
+        aqua_raw_frames.append(frame.convert("RGBA"))
+        aqua_frame_delays.append(frame.info.get("duration", 100))
+    aqua_frames = []
+    aqua_1_image = None
+    aqua_1_label = None
+
+    def rebuild_aqua(canvas_w, canvas_h):
+        # Re-renders the character at a scale that fits the current canvas
+        # size, since the canvas itself grows/shrinks with the window.
+        nonlocal aqua_frames, aqua_1_image, aqua_1_label
+        scale = max(1, min(canvas_w // frame_w, (canvas_h - 80) // frame_h))
+        aqua_frames = [
+            ImageTk.PhotoImage(frame.resize((frame_w * scale, frame_h * scale), Image.NEAREST))
+            for frame in aqua_raw_frames
+        ]
+        aqua_1.delete("all")
+        aqua_1_image = aqua_1.create_image(canvas_w // 2, 20, anchor="n", image=aqua_frames[0])
+        aqua_1_label = aqua_1.create_text(
+            canvas_w // 2, 20 + frame_h * scale + 30,
+            fill="white", font=("Arial", 14), justify="center"
+        )
+
+    def animate_aqua(index=0):
+        if aqua_frames:
+            aqua_1.itemconfig(aqua_1_image, image=aqua_frames[index % len(aqua_frames)])
+        root2.after(aqua_frame_delays[index % len(aqua_frame_delays)], animate_aqua, (index + 1) % len(aqua_frame_delays))
+
+    def on_resize(event=None):
         nonlocal bg_width, bg_height
         if event is not None and event.widget is root2:
             bg_width, bg_height = event.width, event.height
+
         resized = bg_source.resize((max(bg_width, 1), max(bg_height, 1)))
         bg_photo = ImageTk.PhotoImage(resized)
         bg_label.configure(image=bg_photo)
         bg_label.image = bg_photo
 
-    update_bg()
-    root2.bind("<Configure>", update_bg)
+        rebuild_aqua(max(int(bg_width * 0.4), 1), max(int(bg_height * 0.75), 1))
 
-    aquaAmounttext = tk.Label(root2, text="Aqua Clicker", font=("Arial", 24))
-    aquaAmountinteger = tk.Label(root2, text=f"{aquas}", font=("Arial", 24))
+        font_size = max(12, min(28, bg_width // 40))
+        aquaAmounttext.config(font=("Arial", font_size))
+        aquaAmountinteger.config(font=("Arial", font_size))
 
-    #aquaCookie = tk.Button(root2)
-
-    aquaAmounttext.grid(padx=500, pady=5)
-    aquaAmountinteger.grid(padx=500, pady=5)
-
-
-
-
-
-    aqua_canvas_w, aqua_canvas_h = 375, 600
-    aqua_1 = tk.Canvas(root2, width=aqua_canvas_w, height=aqua_canvas_h, highlightthickness=0)
-
-    aqua_gif = Image.open(os.path.join(ASSETS_DIR, "aqua-deltarune.gif"))
-    frame_w, frame_h = aqua_gif.size
-    scale = max(1, min(aqua_canvas_w // frame_w, (aqua_canvas_h - 80) // frame_h))
-    aqua_frames = []
-    aqua_frame_delays = []
-
-    for frame in ImageSequence.Iterator(aqua_gif):
-        resized = frame.convert("RGBA").resize((frame_w * scale, frame_h * scale), Image.NEAREST)
-        aqua_frames.append(ImageTk.PhotoImage(resized))
-        aqua_frame_delays.append(frame.info.get("duration", 100))
-
-    aqua_1_image = aqua_1.create_image(aqua_canvas_w // 2, 20, anchor="n", image=aqua_frames[0])
-    aqua_1_label = aqua_1.create_text(
-        aqua_canvas_w // 2, 20 + frame_h * scale + 30,
-        fill="white", font=("Arial", 14), justify="center"
-    )
-
-    def animate_aqua(index=0):
-        aqua_1.itemconfig(aqua_1_image, image=aqua_frames[index])
-        root2.after(aqua_frame_delays[index], animate_aqua, (index + 1) % len(aqua_frames))
-
+    on_resize()
+    root2.bind("<Configure>", on_resize)
     animate_aqua()
 
     def onAquaClick(event):
@@ -142,12 +160,11 @@ def aquaClicker(res):
         click_sound.play()
         aquas += (1 + addedAquaClickValue)
         aquaAmountinteger.config(text=f"{aquas}")
-        aqua_1.itemconfig(aqua_1_label,
-            text=f"Click Her!")
+        if aqua_1_label is not None:
+            aqua_1.itemconfig(aqua_1_label, text="Click Her!")
         save_aquas(aquas)
 
     aqua_1.bind("<Button-1>", onAquaClick)
-    aqua_1.grid(padx=5, pady=5)
 
     bg_label.lower()
 
