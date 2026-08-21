@@ -1,0 +1,68 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Build with PyInstaller
+        run: pyinstaller Main.spec
+
+      # Zip the .app ourselves with ditto — upload-artifact strips the
+      # top-level folder name from a plain directory, which would break
+      # the .app bundle (Finder needs the folder literally named Main.app).
+      - name: Package macOS app bundle
+        if: runner.os == 'macOS'
+        run: ditto -c -k --sequesterRsrc --keepParent dist/Main.app AquaClicker-macos.zip
+
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'macOS'
+        with:
+          name: AquaClicker-macos
+          path: AquaClicker-macos.zip
+
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Windows'
+        with:
+          name: AquaClicker-windows
+          path: dist/Main
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Zip Windows build
+        run: cd artifacts/AquaClicker-windows && zip -r ../../AquaClicker-windows.zip . && cd ../..
+
+      - name: Move macOS zip into place
+        run: mv artifacts/AquaClicker-macos/AquaClicker-macos.zip AquaClicker-macos.zip
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            AquaClicker-windows.zip
+            AquaClicker-macos.zip
